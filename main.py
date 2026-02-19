@@ -3,6 +3,7 @@ import os
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QHBoxLayout, \
     QMessageBox
 import folium
+from PySide6.QtCore import Qt
 
 from gui.video_player import VideoPlayer
 from gui.map_widget import MapWidget
@@ -99,27 +100,91 @@ class PanoramicVideoTracker(QMainWindow):
             "",
             "GPX Files (*.gpx)"
         )
-        if file_path:
-            print(f"📂 Загружаем трек: {file_path}")
-            self.track_points = load_gpx(file_path)
-            self.map_widget.load_track(self.track_points)
-            print(f"✅ Загружено {len(self.track_points)} точек трека")
+        if not file_path:
+            return
 
-            # Расчет синхронизации
-            if self.track_points:
-                self.time_offset = -self.track_points[0]["sec"]
-                print(f"⏱️ Временной сдвиг для синхронизации: {self.time_offset} секунд")
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open GPX Track",
-            "",
-            "GPX Files (*.gpx)"
-        )
-        if file_path:
-            print(f"📂 Загружаем трек: {file_path}")
-            self.track_points = load_gpx(file_path)
-            self.map_widget.load_track(self.track_points)
-            print(f"✅ Загружено {len(self.track_points)} точек трека")
+        print(f"📂 Загружаем трек: {file_path}")
+        self.track_points = load_gpx(file_path)
+        self.map_widget.load_track(self.track_points)
+        print(f"✅ Загружено {len(self.track_points)} точек трека")
+
+        # Добавляем переменную для ручной подстройки
+        self.manual_offset = 0  # Будем накапливать ручную подстройку
+
+        # Анализируем трек для определения начала движения
+        if self.track_points:
+            first_time = self.track_points[0]["time"]
+            last_time = self.track_points[-1]["time"]
+
+            print(f"⏱️ Диапазон времени в треке:")
+            print(f"   Первая точка: {first_time} (сек: {self.track_points[0]['sec']})")
+            print(f"   Последняя точка: {last_time} (сек: {self.track_points[-1]['sec']})")
+
+            # Находим момент, когда начинается реальное движение
+            start_lat = self.track_points[0]['lat']
+            start_lon = self.track_points[0]['lon']
+
+            movement_start_time = None
+            movement_start_index = 0
+
+            for i, point in enumerate(self.track_points):
+                lat_diff = abs(point['lat'] - start_lat)
+                lon_diff = abs(point['lon'] - start_lon)
+
+                if lat_diff > 0.00001 or lon_diff > 0.00001:
+                    movement_start_time = point['sec']
+                    movement_start_index = i
+                    break
+
+            if movement_start_time is not None:
+                print(f"\n🚗 Анализ движения:")
+                print(f"   Начальная позиция: ({start_lat:.6f}, {start_lon:.6f})")
+                print(f"   Движение начинается с точки {movement_start_index}")
+                print(f"   Время начала движения: {movement_start_time} сек")
+                print(f"   Статичных точек в начале: {movement_start_index}")
+
+                # Сохраняем базовое смещение
+                self.base_time_offset = -movement_start_time
+                self.time_offset = self.base_time_offset + self.manual_offset
+
+                print(f"\n🔄 Синхронизация видео и трека:")
+                print(f"   Видео начинается с 0 сек")
+                print(f"   Движение в треке начинается с {movement_start_time} сек")
+                print(f"   Базовое смещение: {self.base_time_offset} сек")
+                print(f"   Ручная подстройка: {self.manual_offset} сек")
+                print(f"   Итоговое смещение: {self.time_offset} сек")
+                print(f"   -> Движение начнется при времени видео {movement_start_time} сек")
+            else:
+                self.base_time_offset = -self.track_points[0]["sec"]
+                self.time_offset = self.base_time_offset
+                print("⚠️ Движение не обнаружено в треке!")
+
+            # Добавляем клавиши для подстройки
+            print("\n🎮 Для подстройки синхронизации используйте:")
+            print("   Клавиши '+' и '-' для сдвига вперед/назад")
+            print("   Текущее смещение: 0 сек")
+
+    # Добавьте этот метод для ручной подстройки
+    def adjust_sync(self, delta):
+        """Ручная подстройка синхронизации"""
+        self.manual_offset += delta
+        self.time_offset = self.base_time_offset + self.manual_offset
+        print(f"⚡ Синхронизация скорректирована: {self.manual_offset:+.1f} сек (итог: {self.time_offset:.1f} сек)")
+
+        # Обновляем маркер для текущего кадра
+        if hasattr(self.video_player, 'get_current_time'):
+            current_time = self.video_player.get_current_time()
+            self.update_marker(current_time)
+
+    # Добавьте обработку клавиш в класс PanoramicVideoTracker
+    def keyPressEvent(self, event):
+        """Обработка нажатий клавиш для подстройки синхронизации"""
+        if event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
+            self.adjust_sync(0.5)  # Сдвиг на 0.5 сек вперед
+        elif event.key() == Qt.Key_Minus:
+            self.adjust_sync(-0.5)  # Сдвиг на 0.5 сек назад
+        else:
+            super().keyPressEvent(event)
 
     def extract_track(self):
         """Извлечение GPS-трека из видео"""
