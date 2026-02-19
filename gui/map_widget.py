@@ -57,18 +57,36 @@ class MapWidget(QWidget):
 
         self.update_web_view()
 
-    def update_marker(self, lat, lon):
-        """Обновить позицию маркера"""
-        if self.map:
-            # Удаляем старый маркер
-            if self.marker:
-                self.marker.remove()
+    def update_marker(self, lat, lon, angle=0, speed=0):
+        """
+        Обновить позицию маркера на карте
 
-            # Добавляем новый маркер
-            self.marker = folium.Marker(
-                [lat, lon],
-                popup='Current Position',
-                icon=folium.Icon(color='red')
-            ).add_to(self.map)
+        Args:
+            lat: широта
+            lon: долгота
+            angle: угол направления (в градусах)
+            speed: скорость (не используется, но оставляем для совместимости)
+        """
+        try:
+            # JavaScript код для обновления маркера
+            js_code = f"""
+            if (window.marker) {{
+                window.marker.setLatLng([{lat}, {lon}]);
 
-            self.update_web_view()
+                // Обновляем угол поворота, если нужно
+                if (window.marker._icon) {{
+                    window.marker._icon.style.transform += ' rotate({angle}deg)';
+                }}
+            }}
+            """
+            self.web_view.page().runJavaScript(js_code)
+        except Exception as e:
+            print(f"Ошибка при обновлении маркера: {e}")
+
+    def clear_track(self):
+        """Очистить трек с карты"""
+        try:
+            self.web_view.page().runJavaScript("window.clearTrack();")
+            print("🧹 Трек очищен с карты")
+        except Exception as e:
+            print(f"Ошибка при очистке трека: {e}")
