@@ -13,7 +13,7 @@ class MapWidget(QWidget):
         self.setLayout(layout)
 
         # Создаем карту
-        self.map = folium.Map(location=[55.7558, 37.6176], zoom_start=10)  # Москва по умолчанию
+        self.map = folium.Map(location=[59.909360, 30.255810], zoom_start=16)  # Москва по умолчанию
         self.web_view = QWebEngineView()
 
         # Сохраняем карту в HTML и загружаем
@@ -31,7 +31,7 @@ class MapWidget(QWidget):
         self.web_view.setHtml(data.getvalue().decode())
 
     def load_track(self, track_points):
-        """Загрузить трек на карту"""
+        """Загрузить трек на карту с добавлением сглаживания"""
         if not track_points:
             return
 
@@ -42,11 +42,16 @@ class MapWidget(QWidget):
         # Центрируем карту на треке
         center_lat = np.mean(lats)
         center_lon = np.mean(lons)
-        self.map = folium.Map(location=[center_lat, center_lon], zoom_start=12)
+        self.map = folium.Map(location=[center_lat, center_lon], zoom_start=15)
 
-        # Добавляем линию трека
+        # Добавляем линию трека с параметром сглаживания
         points = [[p['lat'], p['lon']] for p in track_points]
-        self.track_line = folium.PolyLine(points, color='blue', weight=3).add_to(self.map)
+        self.track_line = folium.PolyLine(
+            points,
+            color='red',
+            weight=5,
+            smooth_factor=7  # Добавляем сглаживание
+        ).add_to(self.map)
 
         # Добавляем начальную точку
         self.marker = folium.Marker(
@@ -55,6 +60,7 @@ class MapWidget(QWidget):
             icon=folium.Icon(color='green')
         ).add_to(self.map)
 
+        # Обновляем отображение карты
         self.update_web_view()
 
     def update_marker(self, lat, lon):
