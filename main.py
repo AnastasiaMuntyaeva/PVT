@@ -105,6 +105,22 @@ class PanoramicVideoTracker(QMainWindow):
             self.map_widget.load_track(self.track_points)
             print(f"✅ Загружено {len(self.track_points)} точек трека")
 
+            # Расчет синхронизации
+            if self.track_points:
+                self.time_offset = -self.track_points[0]["sec"]
+                print(f"⏱️ Временной сдвиг для синхронизации: {self.time_offset} секунд")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open GPX Track",
+            "",
+            "GPX Files (*.gpx)"
+        )
+        if file_path:
+            print(f"📂 Загружаем трек: {file_path}")
+            self.track_points = load_gpx(file_path)
+            self.map_widget.load_track(self.track_points)
+            print(f"✅ Загружено {len(self.track_points)} точек трека")
+
     def extract_track(self):
         """Извлечение GPS-трека из видео"""
         print("\n=== ИЗВЛЕЧЕНИЕ ТРЕКА ===")
