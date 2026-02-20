@@ -1,4 +1,3 @@
-# video_gps
 import subprocess
 import os
 import gpxpy
@@ -191,3 +190,4 @@ def extract_gpx_from_video(video_path):
     except Exception as e:
         print(f"Ошибка при извлечении GPS: {e}")
         return None
+
