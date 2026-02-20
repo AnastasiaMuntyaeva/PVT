@@ -1,3 +1,4 @@
+# track_loader.py
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -20,13 +21,16 @@ def load_gpx(path):
         points.append({
             "lat": lat,
             "lon": lon,
+            # --- Сохраняем только секунды с начала трека ---
             "time": t
         })
 
-    # --- НОРМАЛИЗАЦИЯ ВРЕМЕНИ ---
+    # --- НОРМАЛИЗАЦИЯ ВРЕМЕНИ: секунды от начала трека ---
     if points:
         t0 = points[0]["time"]
         for p in points:
             p["sec"] = (p["time"] - t0).total_seconds()
+            # --- Убираем datetime, заменяя на ISO строку ---
+            p["time"] = p["time"].isoformat()
 
     return points
