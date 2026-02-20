@@ -2,5 +2,7 @@
 /exiftool.exe
 /extracted_track.gpx
 /gpx.fmt
+.idea/
+PVT/
 /data_processing/exiftool_files/
 /data_processing/exiftool.exe
