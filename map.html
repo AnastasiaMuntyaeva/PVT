@@ -1,0 +1,105 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Track Map</title>
+            <meta charset="utf-8" />
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+            <style>
+                body { margin: 0; padding: 0; }
+                #map { width: 100vw; height: 100vh; }
+            </style>
+        </head>
+        <body>
+            <div id="map"></div>
+            <script>
+                // Инициализация карты
+                var map = L.map('map').setView([55.7558, 37.6176], 10);
+
+                // Добавляем тайлы OpenStreetMap
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+
+                // Создаем слои для трека и маркера
+                window.trackLayer = L.layerGroup().addTo(map);
+                window.markerLayer = L.layerGroup().addTo(map);
+
+                // Маркер (пока пустой)
+                window.marker = null;
+
+                // Функция для загрузки трека
+                window.loadTrack = function(points) {
+                    window.trackLayer.clearLayers();
+
+                    if (!points || points.length === 0) return;
+
+                    var latlngs = points.map(p => [p.lat, p.lon]);
+
+                    // Рисуем линию трека
+                    var polyline = L.polyline(latlngs, {
+                        color: 'blue',
+                        weight: 3,
+                        opacity: 0.7
+                    }).addTo(window.trackLayer);
+
+                    // Добавляем точки
+                    points.forEach((point, index) => {
+                        var circle = L.circleMarker([point.lat, point.lon], {
+                            radius: 3,
+                            color: 'red',
+                            fillColor: '#f03',
+                            fillOpacity: 0.8
+                        }).addTo(window.trackLayer);
+
+                        // Добавляем всплывающую подсказку с временем
+                        if (point.time) {
+                            var timeStr = new Date(point.time).toLocaleTimeString();
+                            circle.bindTooltip(timeStr, {permanent: false});
+                        }
+                    });
+
+                    // Центрируем карту на треке
+                    map.fitBounds(polyline.getBounds());
+                };
+
+                // Функция для обновления маркера
+                window.updateMarker = function(lat, lon, angle) {
+                    // Удаляем старый маркер
+                    window.markerLayer.clearLayers();
+
+                    if (lat && lon) {
+                        // Создаем иконку с направлением
+                        var markerIcon = L.divIcon({
+                            className: 'direction-marker',
+                            html: `<div style="
+                                width: 20px;
+                                height: 20px;
+                                background-color: red;
+                                border: 2px solid white;
+                                border-radius: 50%;
+                                transform: rotate(${angle || 0}deg);
+                                box-shadow: 0 0 10px rgba(0,0,0,0.5);
+                            "></div>`,
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        });
+
+                        window.marker = L.marker([lat, lon], {
+                            icon: markerIcon,
+                            zIndexOffset: 1000
+                        }).addTo(window.markerLayer);
+                    }
+                };
+
+                // Функция для очистки трека
+                window.clearTrack = function() {
+                    window.trackLayer.clearLayers();
+                    window.markerLayer.clearLayers();
+                    window.marker = null;
+                };
+            </script>
+        </body>
+        </html>
+        

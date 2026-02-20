@@ -1,10 +1,13 @@
-import sys
+# app_gui.py
 import os
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QHBoxLayout, QMessageBox, QProgressDialog
+from PySide6.QtWidgets import (QMainWindow, QPushButton, QFileDialog, QVBoxLayout,
+                               QWidget, QHBoxLayout, QMessageBox, QProgressDialog, QApplication)
 from PySide6.QtCore import Qt
 from .video_player import VideoPlayer
 from .map_widget import MapWidget
+# Предполагаем, что эти модули у вас есть в проекте:
 from data_processing.track_processing import TrackExtractionThread, load_track_from_gpx
+
 
 class PanoramicVideoTracker(QMainWindow):
     def __init__(self):
@@ -12,116 +15,86 @@ class PanoramicVideoTracker(QMainWindow):
         self.setWindowTitle("Panoramic Video Tracker")
         self.setGeometry(100, 100, 1600, 900)
 
-        self.track = None
+        # --- Атрибуты ---
+        self.track = None  # Объект трека с данными
+        self.video_path = None
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout()
-        central_widget.setLayout(main_layout)
-
-        # Верхняя панель кнопок
-        button_layout = QHBoxLayout()
-        self.btn_open_video = QPushButton("📹 Open Video")
-        self.btn_screenshot = QPushButton("📸 Take Screenshot")
-        for btn in [self.btn_open_video, self.btn_screenshot]:
-            btn.setMinimumHeight(30)
-        button_layout.addWidget(self.btn_open_video)
-        button_layout.addWidget(self.btn_screenshot)
-        button_layout.addStretch()
-        main_layout.addLayout(button_layout)
-
-        # Видео и карта
-        content_layout = QHBoxLayout()
+        # --- Виджеты ---
         self.video_player = VideoPlayer()
         self.map_widget = MapWidget()
+
+        # --- Кнопки ---
+        self.btn_open_video = QPushButton("📹 Open Video")
+        self.btn_open_video.setMinimumHeight(30)
+
+        # --- Layout ---
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+
+        top_layout = QHBoxLayout()
+        top_layout.addWidget(self.btn_open_video)
+        top_layout.addStretch()
+        main_layout.addLayout(top_layout)
+
+        content_layout = QHBoxLayout()
         content_layout.addWidget(self.video_player, 3)
         content_layout.addWidget(self.map_widget, 1)
-        main_layout.addLayout(content_layout)
+        main_layout.addLayout(content_layout, 1)
 
-        # Сигналы
+        # --- Сигналы (Вместо Таймера) ---
         self.btn_open_video.clicked.connect(self.open_video)
-        self.btn_screenshot.clicked.connect(self.video_player.take_screenshot)
+        # Соединяем сигнал изменения кадра из плеера с обновлением маркера
         self.video_player.video_frame_changed.connect(self.update_marker)
 
-        self.statusBar().showMessage("Готов к работе")
-
-    def show_progress_dialog(self, message="Извлечение GPS трека..."):
-        self.progress_dialog = QProgressDialog(message, None, 0, 0, self)
-        self.progress_dialog.setWindowTitle("Пожалуйста, подождите")
-        self.progress_dialog.setWindowModality(Qt.WindowModal)
-        self.progress_dialog.show()
-        QApplication.processEvents()
-
-    def update_progress(self, message):
-        if hasattr(self, 'progress_dialog') and self.progress_dialog:
-            self.progress_dialog.setLabelText(message)
-            QApplication.processEvents()
-
+    # ---------------- Открытие видео ----------------
     def open_video(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Open Video File", "", "Video Files (*.mp4 *.avi *.mov *.mkv);;All Files (*.*)")
-        if not file_path:
-            return
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Video File", "", "Video Files (*.mp4 *.avi *.mov *.mkv)"
+        )
+        if file_path:
+            self.video_path = file_path
+            self.video_player.load_video(file_path)
+            # После загрузки видео начинаем извлекать GPS
+            self.start_gps_extraction(file_path)
 
-        self.video_player.load_video(file_path)
-        self.track = None
+    # ---------------- Извлечение GPS (Поток) ----------------
+    def start_gps_extraction(self, video_path):
+        # Создаем окно прогресса
+        self.progress = QProgressDialog("Извлечение GPS данных...", "Отмена", 0, 0, self)
+        self.progress.setWindowModality(Qt.WindowModal)
+        self.progress.show()
 
-        try:
-            self.map_widget.clear_track()
-        except AttributeError:
-            pass
-
-        self.extract_track_async()
-
-    def extract_track_async(self):
-        if not hasattr(self.video_player, 'is_video_loaded') or not self.video_player.is_video_loaded():
-            QMessageBox.warning(self, "Предупреждение", "Сначала откройте видео файл!")
-            return
-
-        video_path = self.video_player.video_path
-        if not video_path or not os.path.exists(video_path):
-            QMessageBox.critical(self, "Ошибка", "Видео файл не найден на диске!")
-            return
-
-        self.show_progress_dialog("Начало извлечения GPS данных...")
-
+        # Запускаем фоновый поток, чтобы GUI не «фризил»
         self.extraction_thread = TrackExtractionThread(video_path)
-        self.extraction_thread.progress.connect(self.update_progress)
-        self.extraction_thread.finished.connect(self.on_track_extracted)
-        self.extraction_thread.error.connect(self.on_extraction_error)
+        self.extraction_thread.finished.connect(self.on_gps_ready)
+        self.extraction_thread.error.connect(self.on_gps_error)
         self.extraction_thread.start()
 
-    def on_track_extracted(self, gpx_path):
-        if hasattr(self, 'progress_dialog') and self.progress_dialog:
-            self.progress_dialog.close()
-            self.progress_dialog = None
-
+    def on_gps_ready(self, gpx_path):
+        self.progress.close()
         try:
+            # Загружаем данные из временного GPX файла
             self.track = load_track_from_gpx(gpx_path)
+            # Рисуем линию трека на карте
             self.map_widget.load_track(self.track.points)
-            self.statusBar().showMessage(f"Трек загружен: {len(self.track.points)} точек")
+            self.statusBar().showMessage(f"GPS загружен: {len(self.track.points)} точек")
         except Exception as e:
-            QMessageBox.warning(self, "Предупреждение", f"Не удалось загрузить трек:\n{str(e)}")
+            QMessageBox.warning(self, "Ошибка", f"Не удалось обработать GPS: {e}")
 
-    def on_extraction_error(self, message):
-        if hasattr(self, 'progress_dialog') and self.progress_dialog:
-            self.progress_dialog.close()
-            self.progress_dialog = None
-        self.statusBar().showMessage("❌ Ошибка извлечения GPS")
-        QMessageBox.warning(self, "Ошибка извлечения GPS", message)
+    def on_gps_error(self, message):
+        self.progress.close()
+        QMessageBox.warning(self, "GPS", f"Данные GPS не найдены в видео: {message}")
 
+    # ---------------- Обновление маркера ----------------
     def update_marker(self, frame_time):
+        """Вызывается автоматически при каждом новом кадре видео"""
         if not self.track:
             return
 
+        # Получаем интерполированные координаты для текущей секунды видео
         lat, lon, angle, speed = self.track.get_interpolated_data(frame_time)
-        if lat is None:
-            return
-        self.map_widget.update_marker(lat, lon, angle)
 
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    app.setStyle('Fusion')
-    window = PanoramicVideoTracker()
-    window.show()
-    sys.exit(app.exec())
+        if lat is not None and lon is not None:
+            # Обновляем положение иконки на карте
+            self.map_widget.update_marker(lat, lon, angle)
